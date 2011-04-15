@@ -98,7 +98,7 @@ else
 	plist("puppetmasterd") if $0 =~ /puppet_mem$/
 	plist("puppetd") if $0 =~ /puppet_mem$/
 	plist("master") if $0 =~ /puppet_mem$/
-	if $0 =~ /puppet_clients$/
+	if $0 =~ /puppet_client.*$/
 		puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
 		phaselog
 	end
