@@ -1,27 +1,52 @@
 #!/usr/bin/env ruby
 
-# returns the mem usage of a given process
-def plist(psname)
-	counter = 0
-	%x{ps h -o rss,size,vsize,pcpu -C #{psname}}.each do |ps|
-		rss,size,vsize,cpu = ps.split
-		counter += 1
-		puts "#{psname}_#{counter}.value #{rss}"
-	end
-	return
-end
+'''
+==INTRODUCTION==
+This script is meant to be run by munin and has to be symlinked as puppet_client.
+It reports the following 4 metrics:
+ * Total known clients to the puppetmaster, this can include old and retired hosts
+ * The total amount of unique clients that had their configuration compiled in the last 24 hours
+ * The total amount of uniquw clients that had their configuration compiled in the last 5 minutes
+   * The average compilation time of those configs
 
-# reports how many clients compiled in the last 5 minutes
-# repotrs how many unique clients compiled since 24h ago
-# report the average compilation time for all clients in the last 5 minutes.
+Like any munin plugin, this script has 2 commandline options, config and autoconfig.
+
+==HISTORY==
+15-04-2011 - Initial version
+14-04-2011 - Time handling bugfixes
+13-04-2011 - This plugin is based on another plugin on munin exchange[1] by "ohadlevy@gmail.com". 
+
+==REQUIREMENTS==
+ * Ruby(tested on 1.8.6)
+
+==COPYRIGHT==
+The original plugin did not contain any copyright information, assuming public domain.
+Copyright Pieter Lexis - Kumina B.V. (pieter@kumina.nl)
+This script is licenced under the GNU GPL version 3 or higher
+
+[1] - http://exchange.munin-monitoring.org/plugins/puppetmaster/details
+'''
+
+# Parsing the logs
 def phaselog
 	require 'time'
+	# Assuming puppetmaster logs to syslog and it does not logrotate more than once every 24 hours
+	# TODO write syslog handling code to use the logs between 24 hours ago and now
+	# XXX Use a syslog parser?
 	logfiles = ['/var/log/syslog.1', '/var/log/syslog']
-	count,avg,day_count_unique,day_count = 0 ,0 ,0, 0
+
+	# 5mcount = total amount of compiled configs/catalogs(used for 5 minute average)
+	# 5mtotal = total amount of time taken to compile(this is averaged with count
+	# day_count_unique = total amount of unique clients which had a catalog compiled in the last 24 hours
+	5mcount, 5mtotal , day_count_unique = 0 ,0, 0
+	
 	t = Time.now
 	today = t.strftime("^%b %d")
 	hour = t.strftime("^%b %d %H:")
 	m = t.min.to_i
+
+	# Create a regex to find out if the entry is between now and 5 minutes ago
+	# TODO Don't regex, we parse it already for a 24 hour check, we should reuse is.
 	last5m = ""
 	6.times do |i|
 		last5m += (m-i) < 0 ? today + (t -(60*60)).strftime(" %H:") : hour
@@ -29,8 +54,11 @@ def phaselog
 		last5m += (m-i) < 0 ? (60 + (m-i)).to_s : (m-i).to_s
 		last5m += "|" unless i==5
 	end
+
 	hosts = Array.new
-	regexp = ".* for (.*) in (.*) seconds"
+	# setup regex to be able to count the unique clients for the last 24 hours
+	regexp = ".* for (.*) in (.*) seconds" 
+
 	logfiles.each do |logfile|
 		File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
 			if Time.parse(line[0..14]) > (t - (60*60*24)) # is the timestamp between now and 24h ago?
@@ -43,8 +71,8 @@ def phaselog
 							hosts << $1
 						end
 					end
+
 				when /#{regexp}/ then
-					day_count += 1
 					unless hosts.include?($1)
 						hosts << $1
 						day_count_unique += 1
@@ -61,21 +89,6 @@ end
 case ARGV[0]
 when 'config'
 	case $0
-	when /puppet_mem/
-		puts "graph_title puppet memory usage"
-		puts "graph_vlabel memory"
-		puts "puppetd_1.label puppetd"
-		# find out how many mongrel process we have - if any
-		File.open('/etc/sysconfig/puppetmaster') do |line|
-			@pm_process = line.grep(/PUPPETMASTER_INSTANCES/).to_s.split('=')[1].to_i
-		end
-		if @pm_process > 0
-			@pm_process.times do |i|
-				puts "puppetmasterd_#{i+1}.label puppetmasterd #{i+1}"
-			end
-		else
-			puts "puppetmaster.label puppetmasterd"
-		end
 	when /puppet_clients/
 		puts "graph_title puppet clients usage"
 		puts "graph_vlabel clients"
@@ -88,16 +101,13 @@ when 'config'
 	exit 0
 when 'autoconf'
 	case $0
-	when /puppet_mem/,/puppet_clients/
+	when /puppet_client.*/
 		puts "yes"
 	else
 		puts "no"
 		exit 0
 	end
 else
-	plist("puppetmasterd") if $0 =~ /puppet_mem$/
-	plist("puppetd") if $0 =~ /puppet_mem$/
-	plist("master") if $0 =~ /puppet_mem$/
 	if $0 =~ /puppet_client.*$/
 		puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
 		phaselog
