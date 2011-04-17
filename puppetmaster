@@ -12,7 +12,8 @@ It reports the following 4 metrics:
 Like any munin plugin, this script has 2 commandline options, config and autoconfig.
 
 ==HISTORY==
-15-04-2011 - Initial version
+17-04-2011 - Altered the handling of the "last 5 minutes" logs. It now uses Time instead of a regex
+15-04-2011 - Initial release
 14-04-2011 - Time handling bugfixes
 13-04-2011 - This plugin is based on another plugin on munin exchange[1] by "ohadlevy@gmail.com". 
 
@@ -35,38 +36,28 @@ def phaselog
 	# XXX Use a syslog parser?
 	logfiles = ['/var/log/syslog.1', '/var/log/syslog']
 
-	# 5mcount = total amount of compiled configs/catalogs(used for 5 minute average)
-	# 5mtotal = total amount of time taken to compile(this is averaged with count
-	# day_count_unique = total amount of unique clients which had a catalog compiled in the last 24 hours
-	5mcount, 5mtotal , day_count_unique = 0 ,0, 0
+	# count5m = total amount of compiled configs/catalogs(used for 5 minute average)
+	# total5m = total amount of time taken to compile(this is averaged with count
+	# count_unique_24h = total amount of unique clients which had a catalog compiled in the last 24 hours
+	count5m, total5m, count_unique_24h = 0, 0, 0
 	
 	t = Time.now
-	today = t.strftime("^%b %d")
-	hour = t.strftime("^%b %d %H:")
-	m = t.min.to_i
-
-	# Create a regex to find out if the entry is between now and 5 minutes ago
-	# TODO Don't regex, we parse it already for a 24 hour check, we should reuse is.
-	last5m = ""
-	6.times do |i|
-		last5m += (m-i) < 0 ? today + (t -(60*60)).strftime(" %H:") : hour
-		last5m += "0" if ((m-i) < 10 and (m-i) >= 0)
-		last5m += (m-i) < 0 ? (60 + (m-i)).to_s : (m-i).to_s
-		last5m += "|" unless i==5
-	end
-
+	t5min = t - (60 * 5)
+	t24hour = t - (60 * 60 * 24)
 	hosts = Array.new
-	# setup regex to be able to count the unique clients for the last 24 hours
+	
+	# setup regex to extract compilation times
 	regexp = ".* for (.*) in (.*) seconds" 
 
 	logfiles.each do |logfile|
 		File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
-			if Time.parse(line[0..14]) > (t - (60*60*24)) # is the timestamp between now and 24h ago?
+			logTime = Time.parse(line[0..14])
+			if logTime > t24hour # is the timestamp between now and 24h ago?
 				case line
-				when /#{last5m}/ then
+				when logTime > t5min then
 					if line =~ /#{regexp}/
 						avg += $2.to_f
-						count += 1
+						count5m += 1
 						unless hosts.include?($1)
 							hosts << $1
 						end
@@ -75,15 +66,15 @@ def phaselog
 				when /#{regexp}/ then
 					unless hosts.include?($1)
 						hosts << $1
-						day_count_unique += 1
+						count_unique_24h += 1
 					end
 				end
 			end
 		end
 	end
-	puts "avg_compile.value #{(avg / count).to_s[0..3]}" unless count == 0
-	puts "last5m_count.value #{count}"
-	puts "last24h_unique_count.value #{day_count_unique}"
+	puts "avg_compile.value #{(avg / count5m).to_s[0..3]}" unless count5m == 0
+	puts "last5m_count.value #{count5m}"
+	puts "last24h_unique_count.value #{count_unique_24h}"
 end
 
 case ARGV[0]
@@ -109,7 +100,7 @@ when 'autoconf'
 	end
 else
 	if $0 =~ /puppet_client.*$/
-		puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
+#		puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
 		phaselog
 	end
 end
