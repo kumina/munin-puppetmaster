@@ -39,7 +39,7 @@ def phaselog
 	# count5m = total amount of compiled configs/catalogs(used for 5 minute average)
 	# total5m = total amount of time taken to compile(this is averaged with count
 	# count_unique_24h = total amount of unique clients which had a catalog compiled in the last 24 hours
-	count5m, total5m, count_unique_24h = 0, 0, 0
+	count5m, total5m, count_unique_24h, avg = 0, 0, 0, 0
 	
 	t = Time.now
 	t5min = t - (60 * 5)
@@ -53,8 +53,7 @@ def phaselog
 		File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
 			logTime = Time.parse(line[0..14])
 			if logTime > t24hour # is the timestamp between now and 24h ago?
-				case line
-				when logTime > t5min then
+				if logTime > t5min # is the timestamp between now and 5 minutes ago?
 					if line =~ /#{regexp}/
 						avg += $2.to_f
 						count5m += 1
@@ -62,8 +61,7 @@ def phaselog
 							hosts << $1
 						end
 					end
-
-				when /#{regexp}/ then
+				elsif line =~ /#{regexp}/
 					unless hosts.include?($1)
 						hosts << $1
 						count_unique_24h += 1
@@ -80,7 +78,7 @@ end
 case ARGV[0]
 when 'config'
 	case $0
-	when /puppet_clients/
+	when /puppet_client.*$/
 		puts "graph_title puppet clients usage"
 		puts "graph_vlabel clients"
 		puts "known_clients.label Known Clients"
@@ -100,7 +98,7 @@ when 'autoconf'
 	end
 else
 	if $0 =~ /puppet_client.*$/
-#		puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
+		puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
 		phaselog
 	end
 end
