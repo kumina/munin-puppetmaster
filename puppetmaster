@@ -12,6 +12,8 @@ It reports the following 4 metrics:
 Like any munin plugin, this script has 2 commandline options, config and autoconfig.
 
 ==HISTORY==
+21-04-2011 - Big rewrite, script can now be called in two ways, for total number or known nodes,
+ and for the nodes and compile times for the last 5 _and_ 30 minutes.
 17-04-2011 - Altered the handling of the "last 5 minutes" logs. It now uses Time instead of a regex
 15-04-2011 - Initial release
 14-04-2011 - Time handling bugfixes
