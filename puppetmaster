@@ -124,3 +124,4 @@ else
     puts "last24h_unique_count.value #{count_unique(t24h)}"
   end
 end
+puts "."
