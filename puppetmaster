@@ -35,95 +35,95 @@ puppet_node = /puppet_node.?$/
 puppet_total = /puppet_total.?$/
 t = Time.now
 
-def parselogs(since)
+def parselogs(since, count_unique=false)
   # Assuming puppetmaster logs to syslog and it does not logrotate more than once every 24 hours
-  # TODO write syslog handling code to use the logs between 24 hours ago and now
-  # XXX Use a syslog parser?
-  logfiles = ['/var/log/syslog.1', '/var/log/syslog']
+  # TODO write syslog handling code to use the logs between 24 hours ago and now pseudo-code:
+  # logfiles =["#{logfile}"]
+  # logfile.{1,{2..X}.gz}.each do |file|
+  #  top_line = [FIRST LINE OF file]
+  #  logfiles.add("#{logfile}")
+  #  if Time.parse(top_line[0..14] > since
+  #   [BREAK FROM each]
+  #  end
 
   # setup regex to extract compilation times
   regexp = ".* for (.*) in (.*) seconds"
+  logfile = ENV["puppet_logs"] || "/var/log/syslog"
+  logfiles = ["#{logfile}", "#{logfile}.1"]
   count = 0
-  total = 0
+
+  if count_unique
+    hosts = Array.new
+  else
+    total = 0
+  end
 
   logfiles.each do |logfile|
     File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
-      if Time.parse(line[0..14]) > since and line =~ /#{regexp}/
+      if count_unique and Time.parse(line[0..14]) > since and line =~ /#{regexp}/
+        unless hosts.include($1)
+          hosts << $1
+          count += 1
+        end
+      elsif not count_unique and Time.parse(line[0..14]) > since and line =~ /#{regexp}/
         total += $2.to_f
         count += 1
       end
     end
   end
-  return count, total
-end
 
-def count_unique(since)
-  # Assuming puppetmaster logs to syslog and it does not logrotate more than once every 24 hours
-  # TODO write syslog handling code to use the logs between 24 hours ago and now
-  # XXX Use a syslog parser?
-  logfiles = ['/var/log/syslog.1', '/var/log/syslog']
-
-  # setup regex to extract compilation times
-  regexp = ".* for (.*) in (.*) seconds"
-
-  count = 0
-  hosts = Array.new
-  logfiles.each do |logfile|
-    File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
-      if Time.parse(line[0..14]) > since and line =~ /#{regexp}/
-        unless hosts.include?($1)
-          hosts << $1
-          count += 1
-        end
-      end
-    end
+  if count_unique
+    return count
+  else
+    return count, total
   end
-  return count
+
 end
 
 def count_total
   return Dir.entries('/var/lib/puppet/yaml/facts/').size-2
 end
 
-case ARGV[0]
-when 'config'
-  case $0
-  when puppet_total
+case $0
+when puppet_node
+  num_minutes = ENV["num_minutes"] || "5,30"
+  num_minutes = num_minutes.split(/,/)
+  case ARGV[0]
+  when "config"
+    puts "graph_title Puppet nodeconfigs"
+    puts "graph_vlabel clients"
+    num_minutes.each do |num_minute|
+      puts "last#{num_minute}m_count.label Amount of config compilations in the last #{num_minute} minutes"
+      puts "last#{num_minute}m_compile_avg.label Average compile time for all nodes in the last #{num_minute} minutes"
+    end
+    puts "graph_category puppet"
+  when "autoconf"
+    puts "yes"
+  else # we were called with no or a non-sensical parameter
+    num_minutes.each do |num_minute|
+      count, total = parselogs(t - (60 * num_minute.to_i))
+      puts "last#{num_minute}m_count.value #{count}"
+      puts "last#{num_minute}m_compile_avg.value #{(total / count).to_s[0..3]}" unless count == 0
+    end
+  end
+
+when puppet_total
+  case ARGV[0]
+  when "config"
     puts "graph_title Puppet total nodes"
     puts "graph_vlabel clients"
     puts "known_clients.label Total number of known clients"
     puts "last24h_unique_count.label unique clients in the last 24 hours"
-  when puppet_node
-    puts "graph_title Puppet nodeconfigs"
-    puts "graph_vlabel clients"
-    puts "last5m_count.label Unique nodeconfig compilations in tha last 5 minutes"
-    puts "last5m_compile_avg.label Average compile time for all nodes in the last 5 minutes"
-    puts "last30m_count.label Unique nodeconfig compilations in tha last 30 minutes"
-    puts "last30m_compile_avg.label Average compile time for all nodes in the last 30 minutes"
-  end
-  puts "graph_category puppet"
-when 'autoconf'
-  case $0
-  when puppet_node
-    puts "yes"
-  when puppet_total
+  when "autoconf"
     puts "yes"
   else
-    puts "no"
-  end
-else
-  case $0
-  when puppet_node
-    count5m, total5m = parselogs(t - (60 * 5))
-    count30m, total30m = parselogs(t - (60 * 30))
-    puts "last5m_count.value #{count5m}"
-    puts "last5m_compile_avg.value #{(total5m / count5m).to_s[0..3]}" unless count5m == 0
-    puts "last30m_count.value #{count30m}"
-    puts "last30m_compile_avg.value #{(total30m / count30m).to_s[0..3]}" unless count30m == 0
-  when puppet_total
     t24h = t - (60 * 60 * 24)
     puts "known_clients.value #{count_total()}"
-    puts "last24h_unique_count.value #{count_unique(t24h)}"
+    puts "last24h_unique_count.value #{parselogs(t24h, true)}"
   end
 end
 puts "."
+
+# vim: shiftwidth=2:
+# vim: smarttab:
+# vim: expandtab:
