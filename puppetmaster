@@ -27,78 +27,111 @@ This script is licenced under the GNU GPL version 3 or higher
 
 [1] - http://exchange.munin-monitoring.org/plugins/puppetmaster/details
 '''
+require 'time'
 
-# Parsing the logs
-def phaselog
-  require 'time'
+puppet_node = /puppet_node.?$/
+puppet_total = /puppet_total.?$/
+t = Time.now
+
+def phaselog(log_type)
+  case log_type
+  when "30min"
+    count5m, total5m = parselogs(t - (60 * 5))
+    count30m, total30m = parselogs(t - (60 * 30))
+    puts "last30m_count.value #{total30m}"
+    puts "avg_compile30min.value #{(total30m / count30m)}" unless count30m == 0
+    puts "last5m_count.value #{total5m}"
+    puts "avg_compile5min.value #{(total5m / count5m)}" unless count5m == 0
+  when "totals"
+    t24h = t - (60 * 60 * 24)
+    puts "known_clients.value #{count_total()}"
+    puts "last24h_unique_count.value #{count_unique(t24h)}"
+  end
+end
+
+def parselogs(since)
   # Assuming puppetmaster logs to syslog and it does not logrotate more than once every 24 hours
   # TODO write syslog handling code to use the logs between 24 hours ago and now
   # XXX Use a syslog parser?
   logfiles = ['/var/log/syslog.1', '/var/log/syslog']
 
-  # count5m = total amount of compiled configs/catalogs(used for 5 minute average)
-  # total5m = total amount of time taken to compile(this is averaged with count
-  # count_unique_24h = total amount of unique clients which had a catalog compiled in the last 24 hours
-  count5m, total5m, count_unique_24h, avg = 0, 0, 0, 0
-
-  t = Time.now
-  t5min = t - (60 * 5)
-  t24hour = t - (60 * 60 * 24)
-  hosts = Array.new
-
   # setup regex to extract compilation times
-  regexp = ".* for (.*) in (.*) seconds" 
+  regexp = ".* for (.*) in (.*) seconds"
+  count = 0
+  total = 0
 
   logfiles.each do |logfile|
     File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
-      logTime = Time.parse(line[0..14])
-      if logTime > t24hour # is the timestamp between now and 24h ago?
-        if logTime > t5min # is the timestamp between now and 5 minutes ago?
-          if line =~ /#{regexp}/
-            avg += $2.to_f
-            count5m += 1
-            unless hosts.include?($1)
-              hosts << $1
-            end
-          end
-        elsif line =~ /#{regexp}/
-          unless hosts.include?($1)
-            hosts << $1
-            count_unique_24h += 1
-          end
+      if Time.parse(line[0..14]) > since and line =~ /#{regexp}/
+        total += $2.to_f
+        count += 1
+      end
+    end
+  end
+  return count, total
+end
+
+def count_unique(since)
+  # Assuming puppetmaster logs to syslog and it does not logrotate more than once every 24 hours
+  # TODO write syslog handling code to use the logs between 24 hours ago and now
+  # XXX Use a syslog parser?
+  logfiles = ['/var/log/syslog.1', '/var/log/syslog']
+
+  # setup regex to extract compilation times
+  regexp = ".* for (.*) in (.*) seconds"
+
+  count = 0
+  hosts = Array.new
+  logfiles.each do |logfile|
+    File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
+      if Time.parse(line[0..14]) > since and line =~ /#{regexp}/
+        unless hosts.include($1)
+          hosts << $1
+          count += 1
         end
       end
     end
   end
-  puts "avg_compile.value #{(avg / count5m).to_s[0..3]}" unless count5m == 0
-  puts "last5m_count.value #{count5m}"
-  puts "last24h_unique_count.value #{count_unique_24h}"
+  return count
 end
+
+def count_total
+  return Dir.entries('/var/lib/puppet/yaml/facts/').size-2}
+end
+
 
 case ARGV[0]
 when 'config'
   case $0
-  when /puppet_client.*$/
-    puts "graph_title puppet clients usage"
+  when puppet_total
+    puts "graph_title Puppet total nodes"
     puts "graph_vlabel clients"
-    puts "known_clients.label Known Clients"
-    puts "avg_compile.label Average configuration compile"
-    puts "last5m_count.label Clients in the last 5 minutes"
+    puts "known_clients.label Total number of known clients"
     puts "last24h_unique_count.label unique clients in the last 24 hours"
+  when puppet_node
+    puts "graph_title Puppet nodeconfigs"
+    puts "graph_vlabel clients"
+    puts "last30m_count.label Unique nodeconfig compilations in tha last 30 minutes"
+    puts "avg_compile30min.label Average compile time for all nodes in the last 30 minutes"
+    puts "last5m_count.label Unique nodeconfig compilations in tha last 5 minutes"
+    puts "avg_compile5min.label Average compile time for all nodes in the last 5 minutes"
   end
   puts "graph_category puppet"
   exit 0
+
 when 'autoconf'
   case $0
-  when /puppet_client.*/
+  when puppet_node or puppet_total
     puts "yes"
   else
     puts "no"
-    exit 0
   end
+
 else
-  if $0 =~ /puppet_client.*$/
-    puts "known_clients.value #{Dir.entries('/var/lib/puppet/yaml/facts/').size-2}"
+  case $0
+  when puppet_node
     phaselog
+  when puppet_total
+    totals
   end
 end
