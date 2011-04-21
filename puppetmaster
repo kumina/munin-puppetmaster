@@ -33,22 +33,6 @@ puppet_node = /puppet_node.?$/
 puppet_total = /puppet_total.?$/
 t = Time.now
 
-def phaselog(log_type)
-  case log_type
-  when "30min"
-    count5m, total5m = parselogs(t - (60 * 5))
-    count30m, total30m = parselogs(t - (60 * 30))
-    puts "last30m_count.value #{total30m}"
-    puts "avg_compile30min.value #{(total30m / count30m)}" unless count30m == 0
-    puts "last5m_count.value #{total5m}"
-    puts "avg_compile5min.value #{(total5m / count5m)}" unless count5m == 0
-  when "totals"
-    t24h = t - (60 * 60 * 24)
-    puts "known_clients.value #{count_total()}"
-    puts "last24h_unique_count.value #{count_unique(t24h)}"
-  end
-end
-
 def parselogs(since)
   # Assuming puppetmaster logs to syslog and it does not logrotate more than once every 24 hours
   # TODO write syslog handling code to use the logs between 24 hours ago and now
@@ -85,7 +69,7 @@ def count_unique(since)
   logfiles.each do |logfile|
     File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
       if Time.parse(line[0..14]) > since and line =~ /#{regexp}/
-        unless hosts.include($1)
+        unless hosts.include?($1)
           hosts << $1
           count += 1
         end
@@ -96,9 +80,8 @@ def count_unique(since)
 end
 
 def count_total
-  return Dir.entries('/var/lib/puppet/yaml/facts/').size-2}
+  return Dir.entries('/var/lib/puppet/yaml/facts/').size-2
 end
-
 
 case ARGV[0]
 when 'config'
@@ -111,27 +94,33 @@ when 'config'
   when puppet_node
     puts "graph_title Puppet nodeconfigs"
     puts "graph_vlabel clients"
-    puts "last30m_count.label Unique nodeconfig compilations in tha last 30 minutes"
-    puts "avg_compile30min.label Average compile time for all nodes in the last 30 minutes"
     puts "last5m_count.label Unique nodeconfig compilations in tha last 5 minutes"
-    puts "avg_compile5min.label Average compile time for all nodes in the last 5 minutes"
+    puts "last5m_compile_avg.label Average compile time for all nodes in the last 5 minutes"
+    puts "last30m_count.label Unique nodeconfig compilations in tha last 30 minutes"
+    puts "last30m_compile_avg.label Average compile time for all nodes in the last 30 minutes"
   end
   puts "graph_category puppet"
-  exit 0
-
 when 'autoconf'
   case $0
-  when puppet_node or puppet_total
+  when puppet_node
+    puts "yes"
+  when puppet_total
     puts "yes"
   else
     puts "no"
   end
-
 else
   case $0
   when puppet_node
-    phaselog
+    count5m, total5m = parselogs(t - (60 * 5))
+    count30m, total30m = parselogs(t - (60 * 30))
+    puts "last5m_count.value #{count5m}"
+    puts "last5m_compile_avg.value #{(total5m / count5m).to_s[0..3]}" unless count5m == 0
+    puts "last30m_count.value #{count30m}"
+    puts "last30m_compile_avg.value #{(total30m / count30m).to_s[0..3]}" unless count30m == 0
   when puppet_total
-    totals
+    t24h = t - (60 * 60 * 24)
+    puts "known_clients.value #{count_total()}"
+    puts "last24h_unique_count.value #{count_unique(t24h)}"
   end
 end
