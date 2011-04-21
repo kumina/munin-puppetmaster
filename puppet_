@@ -1,0 +1,165 @@
+#!/usr/bin/env ruby
+'''
+==INTRODUCTION==
+This plugin was created to trend our puppetmaster[1] in two ways:
+ 1. We wanted to know the average compile time for configs over a amount of time
+ 2. We wanted to trend the total amount of nodes that have connected over the 
+    last day to the total of known hosts
+
+This plugin is based on another plugin on munin exchange[2] by "ohadlevy@gmail.com". 
+
+==USAGE==
+This plugin is named puppet_ it should be symlinked into /etc/munin/plugins as
+either puppet_node or puppet_total(alternatively it can be puppet_nodes or
+puppet_totals). 
+
+Like any munin plugin, this script has 2 commandline options, config and
+autoconfig, which work as expected.
+
+There are two enviroment variables that can be passed to it:
+ puppet_logs - This should be a string that defines the puppet log file
+               (by default it is "/var/log/syslog")
+ num_minutes - Only useful when calling the plugin as puppet_node, see below
+
+===puppet_node===
+Running this plugin as puppet_node will report the total amount of compiled
+catalogs/configs and their average compile time over the last 5 and 30 minutes.
+These values can be altered by using the enviroment variable num_minutes.
+
+num_minutes should be a string of any amount of integers separated by a
+comma(,). Example: "5,30,60" will report the above metrics for the last
+5, 30 and 60 minutes.
+
+===puppet_total===
+Running this plugin as puppet_total will report the total number of known nodes
+and the total number of unique nodes that had their catalog compiled in the
+last 24 hours.
+
+==HISTORY==
+21-04-2011 - Big rewrite, script can now be called in two ways.
+             It now supports parameters from enviroment variables.
+17-04-2011 - Altered the handling of the "last 5 minutes" logs. It now uses
+             Time instead of a regex
+15-04-2011 - Initial internal release
+==REQUIREMENTS==
+ * Ruby(tested on 1.8.6)
+
+==COPYRIGHT==
+The original plugin[2] did not contain any copyright information,
+assuming public domain.
+
+Copyright Pieter Lexis - Kumina B.V. (pieter@kumina.nl)
+This script is licenced under the GNU GPL version 3 or higher
+
+[1] - http://www.puppetlabs.com/puppet/introduction/
+[2] - http://exchange.munin-monitoring.org/plugins/puppetmaster/details
+'''
+require 'time'
+
+def parselogs(since, count_unique=false) # This function parses the puppet_log
+  # Assuming puppetmaster logs to syslog and it does not logrotate more than
+  # once every 24 hours.
+  # TODO write better syslog handling code
+  # pseudo-code:
+  # logfiles =["#{logfile}"]
+  # logfile.{1,{2..X}.gz}.each do |file|
+  #  top_line = [FIRST LINE OF file]
+  #  logfiles.add("#{logfile}")
+  #  if Time.parse(top_line[0..14] > since
+  #   [BREAK FROM each]
+  #  end
+
+  logfile = ENV["puppet_logs"] || "/var/log/syslog"
+  logfiles = ["#{logfile}", "#{logfile}.1"]
+
+  # setup variables
+  # regexp = a regex to be able to extract hostnames and compilation times 
+  regexp = ".* for (.*) in (.*) seconds"
+  count = 0
+
+  if count_unique
+    hosts = Array.new
+  else
+    total = 0
+  end
+  # The actual parsing of the logs
+  logfiles.each do |logfile|
+    # We only want lines related to configuration compiles
+    File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
+      # get the puppet_total values
+      if count_unique and Time.parse(line[0..14]) > since and line =~ /#{regexp}/
+        unless hosts.include($1)
+          hosts << $1
+          count += 1
+        end
+      # get the puppet_node values
+      elsif not count_unique and Time.parse(line[0..14]) > since and line =~ /#{regexp}/
+        total += $2.to_f
+        count += 1
+      end
+    end
+  end
+
+  if count_unique
+    return count
+  else
+    return count, total
+  end
+end
+
+def count_total # Count the total number of known nodes
+  return Dir.entries('/var/lib/puppet/yaml/facts/').size-2
+end
+
+# Get the current time, it's used to calculate the since times
+t = Time.now
+
+# Do something different based on the name by which this script it invoked
+case $0
+when /puppet_nodes?$/
+  num_minutes = ENV["num_minutes"] || "5,30"
+  num_minutes = num_minutes.split(/,/)
+  case ARGV[0]
+  when "config"
+    puts "graph_title Puppet nodeconfigs"
+    puts "graph_vlabel clients"
+    num_minutes.each do |num_minute|
+      puts "last#{num_minute}m_count.label Amount of config compilations in the last #{num_minute} minutes"
+      puts "last#{num_minute}m_compile_avg.label Average compile time for all nodes in the last #{num_minute} minutes"
+    end
+    puts "graph_category puppet"
+  when "autoconf"
+    puts "yes"
+  else # we were called with no or a non-sensical parameter
+    num_minutes.each do |num_minute|
+      count, total = parselogs(t - (60 * num_minute.to_i))
+      puts "last#{num_minute}m_count.value #{count}"
+      puts "last#{num_minute}m_compile_avg.value #{(total / count).to_s[0..3]}" unless count == 0
+    end
+  end
+
+when /puppet_totals?$/
+  case ARGV[0]
+  when "config"
+    puts "graph_title Puppet total nodes"
+    puts "graph_vlabel clients"
+    puts "known_clients.label Total number of known clients"
+    puts "last24h_unique_count.label unique clients in the last 24 hours"
+  when "autoconf"
+    puts "yes"
+  else
+    t24h = t - (60 * 60 * 24)
+    puts "known_clients.value #{count_total()}"
+    puts "last24h_unique_count.value #{parselogs(t24h, true)}"
+  end
+else # scriptname makes no sense
+  if ARGV[0] == "autoconf"
+    puts "no"
+  end
+end
+# Munin expects a single dot on the last line to signify the termination of the script
+puts "."
+
+# vim: shiftwidth=2:
+# vim: smarttab:
+# vim: expandtab:
