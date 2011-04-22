@@ -11,7 +11,10 @@
 # USAGE
 # This plugin is named puppet_ it should be symlinked into /etc/munin/plugins as
 # either puppet_node or puppet_total(alternatively it can be puppet_nodes or
-# puppet_totals). 
+# puppet_totals).
+# In your /etc/munin/plugin-conf.d/puppet_ set the following:
+#  [puppet_*]
+#  user root
 #
 # Like any munin plugin, this script has 2 commandline options, config and
 # autoconfig, which work as expected.
