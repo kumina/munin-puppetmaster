@@ -57,6 +57,9 @@
 # [1] - http://www.puppetlabs.com/puppet/introduction/
 # [2] - http://exchange.munin-monitoring.org/plugins/puppetmaster/details
 
+#%# family=auto
+#%# capabilities=autoconf
+
 require 'time'
 
 def parselogs(since, count_unique=false) # This function parses the puppet_log
@@ -127,8 +130,8 @@ when /puppet_nodes?$/
     puts "graph_title Puppet nodeconfigs"
     puts "graph_vlabel clients or number of seconds"
     num_minutes.each do |num_minute|
-      puts "last#{num_minute}m_count.label Amount of config compilations in the last #{num_minute} minutes"
-      puts "last#{num_minute}m_compile_avg.label Average compile time for all nodes in the last #{num_minute} minutes"
+      puts "last#{num_minute}m_count.label Config compilations in the last #{num_minute} minutes"
+      puts "last#{num_minute}m_compile_avg.label Avg compile time for the last #{num_minute} minutes"
     end
     puts "graph_category puppet"
   when "autoconf"
@@ -147,9 +150,14 @@ when /puppet_totals?$/
     puts "graph_title Puppet total nodes"
     puts "graph_vlabel clients"
     puts "known_clients.label Total number of known clients"
-    puts "last24h_unique_count.label unique clients in the last 24 hours"
+    puts "last24h_unique_count.label Unique clients in the last 24 hours"
+    puts "graph_category puppet"
   when "autoconf"
-    puts "yes"
+    if Process.euid == 0
+      puts "yes"
+    else
+      puts "no"
+    end
   else
     t24h = t - (60 * 60 * 24)
     puts "known_clients.value #{count_total()}"
@@ -160,8 +168,6 @@ else # scriptname makes no sense
     puts "no"
   end
 end
-# Munin expects a single dot on the last line to signify the termination of the script
-puts "."
 
 # vim: shiftwidth=2:
 # vim: smarttab:
