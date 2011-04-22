@@ -88,7 +88,7 @@ def parselogs(since, count_unique=false) # This function parses the puppet_log
     File.open(logfile).grep(/Compiled configuration|Compiled catalog/).each do |line|
       # get the puppet_total values
       if count_unique and Time.parse(line[0..14]) > since and line =~ /#{regexp}/
-        unless hosts.include($1)
+        unless hosts.include?($1)
           hosts << $1
           count += 1
         end
@@ -122,7 +122,7 @@ when /puppet_nodes?$/
   case ARGV[0]
   when "config"
     puts "graph_title Puppet nodeconfigs"
-    puts "graph_vlabel clients"
+    puts "graph_vlabel clients or number of seconds"
     num_minutes.each do |num_minute|
       puts "last#{num_minute}m_count.label Amount of config compilations in the last #{num_minute} minutes"
       puts "last#{num_minute}m_compile_avg.label Average compile time for all nodes in the last #{num_minute} minutes"
