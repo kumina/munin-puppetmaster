@@ -1,0 +1,55 @@
+INTRODUCTION
+This plugin was created to trend our puppetmaster[1] in two ways:
+ 1. We wanted to know the average compile time for configs over a amount of time
+ 2. We wanted to trend the total amount of nodes that have connected over the
+   last day to the total of known hosts
+
+This plugin is based on another plugin on munin exchange[2] by "ohadlevy@gmail.com".
+
+USAGE
+This plugin is named puppet_ it should be symlinked into /etc/munin/plugins as
+either puppet_node or puppet_total(alternatively it can be puppet_nodes or
+puppet_totals).
+In your /etc/munin/plugin-conf.d/puppet_ set the following:
+ [puppet_*]
+ user root
+
+Like any munin plugin, this script has 2 commandline options, config and
+autoconfig, which work as expected.
+
+There are two enviroment variables that can be passed to it:
+ puppet_logs - This should be a string that defines the puppet log file
+               (by default it is "/var/log/syslog")
+ num_minutes - Only useful when calling the plugin as puppet_node, see below
+
+puppet_node
+Running this plugin as puppet_node will report the total amount of compiled
+catalogs/configs and their average compile time over the last 5 and 30 minutes.
+These values can be altered by using the enviroment variable num_minutes.
+
+num_minutes should be a string of any amount of integers separated by a
+comma(,). Example: "5,30,60" will report the above metrics for the last
+5, 30 and 60 minutes.
+
+puppet_total
+Running this plugin as puppet_total will report the total number of known nodes
+and the total number of unique nodes that had their catalog compiled in the
+last 24 hours.
+
+HISTORY
+26-04-2011 - First public release
+21-04-2011 - Big rewrite, script can now be called in two ways.
+             It now supports parameters from environment variables.
+17-04-2011 - Altered the handling of the "last 5 minutes" logs. It now uses
+             Time instead of a regex
+15-04-2011 - Initial internal release
+
+REQUIREMENTS
+ * Ruby(tested on 1.8.6)
+
+COPYRIGHT
+Copyright Pieter Lexis - Kumina B.V. (pieter@kumina.nl)
+This script is licensed under the GNU GPL version 3 or higher
+
+[1] - http://www.puppetlabs.com/puppet/introduction/
+[2] - http://exchange.munin-monitoring.org/plugins/puppetmaster/details
