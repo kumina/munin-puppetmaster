@@ -1,3 +1,5 @@
+IMPORANT: Kumina is no longer actively maintaining this code, feel free to fork and publish it yourself!
+
 INTRODUCTION
 This plugin was created to trend our puppetmaster[1] in two ways:
  1. We wanted to know the average compile time for configs over a amount of time
